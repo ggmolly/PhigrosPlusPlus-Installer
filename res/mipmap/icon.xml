@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android 7 has no adaptive icons: the same mark on a square, zoomed past the adaptive margins -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp" android:viewportWidth="72" android:viewportHeight="72">
+    <group android:translateX="-18" android:translateY="-18">
+        <path android:fillColor="#16121A" android:pathData="M18,18 h72 v72 h-72 Z" />
+        <path android:fillColor="#F4F2F6" android:pathData="M36,34 L84,34 L72,74 L24,74 Z" />
+        <path android:fillColor="#0D0A0E" android:pathData="M39,51.5 h5.5 v-6 h5 v6 h5.5 v5 h-5.5 v6 h-5 v-6 h-5.5 Z" />
+        <path android:fillColor="#0D0A0E" android:pathData="M58,51.5 h5.5 v-6 h5 v6 h5.5 v5 h-5.5 v6 h-5 v-6 h-5.5 Z" />
+    </group>
+</vector>

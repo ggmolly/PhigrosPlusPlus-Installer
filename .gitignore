@@ -1,0 +1,5 @@
+.direnv/
+build/
+out/
+# signs the installer: whoever has it can ship an update of it, back it up offline
+keystore.jks
