@@ -20,6 +20,7 @@ import java.util.Map;
  */
 final class Release {
     private static final String DOWNLOAD = "https://github.com/ggmolly/PhigrosPlusPlus/releases/latest/download/";
+    static final String INSTALLER = "https://github.com/ggmolly/PhigrosPlusPlus-Installer/releases/latest";
     final String version;
     final int nativeVersion; // mod/phigrospp/NATIVE: a release with the same one only changes lua, updated in game
     final List<String> games;
@@ -50,6 +51,31 @@ final class Release {
         byte[] data = get(DOWNLOAD + "libphigrospp.so", size);
         if (data.length != size || !sha256(data).equals(lib)) throw new IOException("the downloaded libphigrospp.so isn't the release's");
         return data;
+    }
+
+    /** the installer's latest version: github redirects releases/latest to releases/tag/v<version>, no api needed */
+    static String installer() throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(INSTALLER).openConnection();
+        connection.setInstanceFollowRedirects(false);
+        connection.setConnectTimeout(15000);
+        connection.setReadTimeout(15000);
+        try {
+            String to = connection.getHeaderField("Location");
+            if (to == null || !to.contains("/tag/v")) throw new IOException(INSTALLER + ": HTTP " + connection.getResponseCode());
+            return to.substring(to.lastIndexOf("/tag/v") + 6);
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    /** whether version a ("1.2.3") comes after b */
+    static boolean newer(String a, String b) {
+        String[] x = a.split("\\."), y = b.split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int p = i < x.length ? Integer.parseInt(x[i]) : 0, q = i < y.length ? Integer.parseInt(y[i]) : 0;
+            if (p != q) return p > q;
+        }
+        return false;
     }
 
     static String sha256(byte[] data) {

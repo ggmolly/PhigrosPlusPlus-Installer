@@ -21,6 +21,7 @@ import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
 import android.text.style.URLSpan;
+import android.text.style.UnderlineSpan;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -60,7 +61,7 @@ public final class MainActivity extends Activity {
         {"Phigros++ on GitHub", "https://github.com/ggmolly/PhigrosPlusPlus"},
         {"phigros.tools on GitHub", "https://github.com/ggmolly/phigros-tools"},
     };
-    private TextView game, state, status, log, hint;
+    private TextView game, state, status, log, hint, newer;
     private LinearLayout column;
     private Bar bar;
     private ScrollView scroll;
@@ -85,6 +86,11 @@ public final class MainActivity extends Activity {
         subtitle.setText("Installer " + version(getPackageName()));
         column.addView(title);
         column.addView(subtitle);
+        // a newer installer, found by check(): the line opens its release page
+        newer = text(14, WARN);
+        newer.setVisibility(View.GONE);
+        newer.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Release.INSTALLER))));
+        column.addView(newer, spaced(6));
 
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
@@ -177,8 +183,23 @@ public final class MainActivity extends Activity {
                 result = "Couldn't reach GitHub, the built-in patch is used";
                 log("no release, using the built-in patch: " + e.getMessage());
             }
+            String latest = null;
+            try {
+                latest = Release.installer();
+                log("installer " + latest + " is the latest");
+            } catch (Exception e) {
+                log("couldn't check for a newer installer: " + e.getMessage());
+            }
             String shown = result + " · checked at " + new SimpleDateFormat("HH:mm:ss", Locale.ROOT).format(new Date());
+            String ours = getPackageVersion();
+            String offered = latest != null && Release.newer(latest, ours) ? latest : null;
             runOnUiThread(() -> {
+                newer.setVisibility(offered == null ? View.GONE : View.VISIBLE);
+                if (offered != null) {
+                    SpannableStringBuilder line = new SpannableStringBuilder("Installer " + offered + " is available, ");
+                    line.append("download it", new UnderlineSpan(), 0);
+                    newer.setText(line);
+                }
                 if (pulled) {
                     status.setTextColor(INK);
                     status.setText(shown);
@@ -406,6 +427,14 @@ public final class MainActivity extends Activity {
             byte[] buffer = new byte[1 << 16];
             for (int n; (n = in.read(buffer)) > 0; ) out.write(buffer, 0, n);
             return out.toByteArray();
+        }
+    }
+
+    private String getPackageVersion() {
+        try {
+            return getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (PackageManager.NameNotFoundException e) {
+            throw new IllegalStateException(e);
         }
     }
 
