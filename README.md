@@ -1,5 +1,7 @@
 # Phigros++ Installer
 
+![Phigros++ Installer, which turns the Phigros on your phone into Phigros++](assets/banner.webp)
+
 The Android app that turns the Phigros you installed from the Play Store into
 [Phigros++](https://github.com/ggmolly/PhigrosPlusPlus), a modded copy that lives next to the game. No game files are
 downloaded: it patches the ones already on your phone.
