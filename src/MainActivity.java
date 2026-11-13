@@ -362,9 +362,12 @@ public final class MainActivity extends Activity {
     private void refresh() {
         try {
             String version = getPackageManager().getPackageInfo(GAME, 0).versionName;
-            boolean supported = games().contains(version);
+            List<String> games = games();
+            boolean supported = games.contains(version);
             game.setText("Phigros " + version);
-            state.setText(supported ? "Supported" + (release == null ? "" : " by Phigros++ " + release.version) : "Not supported by this Phigros++ yet");
+            state.setText(supported ? "Supported" + (release == null ? "" : " by Phigros++ " + release.version)
+                    : older(version, games.get(games.size() - 1)) ? "Update Phigros from the Play Store first"
+                    : "Not supported by this Phigros++ yet");
             state.setTextColor(supported ? OK : WARN);
             String ours = installedVersion();
             // lua updates arrive in game, so only a new game or native version calls for patching again
@@ -382,6 +385,15 @@ public final class MainActivity extends Activity {
     private void enable(boolean on) {
         install.setEnabled(on);
         install.setAlpha(on ? 1 : 0.35f);
+    }
+
+    private static boolean older(String version, String than) {
+        String[] a = version.split("\\."), b = than.split("\\.");
+        for (int i = 0; i < Math.max(a.length, b.length); i++) {
+            int x = i < a.length ? Integer.parseInt(a[i]) : 0, y = i < b.length ? Integer.parseInt(b[i]) : 0;
+            if (x != y) return x < y;
+        }
+        return false;
     }
 
     /** the game versions Phigros++ runs on: the release's, or mod/phigrospp/GAMES when the installer was built */
