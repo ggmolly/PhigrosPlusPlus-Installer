@@ -1,5 +1,6 @@
 package sh.molly.phigrosplusplus.installer;
 
+import android.animation.TimeInterpolator;
 import android.app.Activity;
 import android.app.PendingIntent;
 import android.content.Intent;
@@ -10,7 +11,7 @@ import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.graphics.Typeface;
-import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -22,10 +23,14 @@ import android.text.TextUtils;
 import android.text.method.LinkMovementMethod;
 import android.text.style.URLSpan;
 import android.text.style.UnderlineSpan;
+import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
 import android.util.Log;
+import android.util.SparseArray;
+import android.view.ViewPropertyAnimator;
+import android.view.animation.PathInterpolator;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.FrameLayout;
@@ -53,16 +58,24 @@ import java.util.regex.Pattern;
 
 public final class MainActivity extends Activity {
     private static final String GAME = "com.PigeonGames.Phigros", PACKAGE = "sh.molly.phigrosplusplus", TAG = "phigros++";
-    // phigros.tools' colours: background, panels, text, secondary text, and the game state's
-    private static final int BG = 0xFF16121A, PANEL = 0xFF0D0A0E, INK = 0xFFF4F2F6, MUTED = 0xFFB3ACB8,
-        OK = 0xFF7BD88F, WARN = 0xFFF2C65A, NEGATIVE = 0xFFFF9D94;
+    // phigros.tools' colours: glass panels and their hairline, text, secondary and faint text, what went well, and
+    // the game state's
+    private static final int PANEL = 0x800A050C, HAIRLINE = 0x1FFFFFFF, INK = 0xFFFFFFFF, MUTED = 0xA8FFFFFF,
+        FAINT = 0x66FFFFFF, GLOW = 0xFF8FDCFF, WARN = 0xFFF2C65A, NEGATIVE = 0xFFFF9D94;
+    // how far a glow reaches around its text, in dp: a text view cuts what's drawn outside its padding
+    private static final int GLOW_ROOM = 20;
+    // android cuts a text's glow into a box past this many pixels
+    private static final int GLOW_MAX = 25;
+    // the ease of every entrance, fast then settling
+    private static final TimeInterpolator EASE = new PathInterpolator(0.16f, 1, 0.3f, 1);
     private static final String[][] LINKS = {
         {"phigros.tools", "https://phigros.tools"},
         {"Phigros++ on GitHub", "https://github.com/ggmolly/PhigrosPlusPlus"},
         {"phigros.tools on GitHub", "https://github.com/ggmolly/phigros-tools"},
     };
-    private TextView game, state, status, log, hint, newer;
-    private LinearLayout column;
+    private TextView game, state, status, percent, log, hint, newer;
+    private LinearLayout column, body, main, details;
+    private final SparseArray<Typeface> weights = new SparseArray<>();
     private Bar bar;
     private ScrollView scroll;
     private final long started = SystemClock.elapsedRealtime();
@@ -74,79 +87,101 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
-        getWindow().setStatusBarColor(BG);
-        getWindow().setNavigationBarColor(BG);
-        column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
+        // the fog runs under the system's bars, the content keeps clear of them
+        getWindow().setStatusBarColor(0);
+        getWindow().setNavigationBarColor(0);
+        getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);
 
-        TextView title = text(32, INK);
-        title.setText("Phigros++");
-        title.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
-        TextView subtitle = text(14, MUTED);
+        // the wordmark glows like the game's logo, the ++ in Phigros++' pink. the padding leaves room for the glow
+        LinearLayout brand = new LinearLayout(this);
+        brand.setBaselineAligned(false);
+        TextView name = text(46, INK, 500);
+        name.setText("Phigros");
+        name.setShadowLayer(Math.min(dp(9), GLOW_MAX), 0, 0, 0xFF5CC4FF);
+        name.setPadding(dp(GLOW_ROOM), dp(GLOW_ROOM), dp(GLOW_ROOM), dp(GLOW_ROOM));
+        TextView plus = text(24, 0xFFFFE3F2, 700);
+        plus.setText("++");
+        plus.setShadowLayer(Math.min(dp(7), GLOW_MAX), 0, 0, 0xFFFF4FA8);
+        plus.setPadding(dp(GLOW_ROOM), dp(GLOW_ROOM + 4), dp(GLOW_ROOM), dp(GLOW_ROOM));
+        brand.addView(name);
+        LinearLayout.LayoutParams raised = new LinearLayout.LayoutParams(-2, -2);
+        raised.leftMargin = -dp(2 * GLOW_ROOM - 3);
+        brand.addView(plus, raised);
+        TextView subtitle = text(15, MUTED, 400);
         subtitle.setText("Installer " + version(getPackageName()));
-        column.addView(title);
-        column.addView(subtitle);
         // a newer installer, found by check(): the line opens its release page
-        newer = text(14, WARN);
+        newer = text(15, WARN, 400);
         newer.setVisibility(View.GONE);
         newer.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Release.INSTALLER))));
-        column.addView(newer, spaced(6));
 
-        LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(new Slant(PANEL, dp(10)));
-        card.setPadding(dp(24), dp(14), dp(24), dp(14));
-        game = text(18, INK);
-        state = text(14, MUTED);
+        LinearLayout card = column();
+        card.setBackground(new Slant(PANEL, HAIRLINE));
+        card.setPadding(dp(34), dp(16), dp(34), dp(18));
+        game = text(22, INK, 400);
+        state = text(15, MUTED, 400);
         card.addView(game);
         card.addView(state);
-        column.addView(card, spaced(20));
 
         install = new Button(this);
-        install.setText("Install Phigros++");
         install.setAllCaps(false);
-        install.setTextSize(16);
-        install.setTextColor(PANEL);
-        install.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        install.setTextSize(18);
+        install.setTextColor(0xFF000000);
+        install.setTypeface(saira(500));
         install.setStateListAnimator(null);
-        install.setBackground(new Slant(INK, dp(10)));
-        install.setForeground(new RippleDrawable(ColorStateList.valueOf(0x33000000), null, new Slant(INK, dp(10))));
+        install.setBackground(new Slant(INK));
+        install.setForeground(new RippleDrawable(ColorStateList.valueOf(0x33000000), null, new Slant(INK)));
         install.setOnClickListener(v -> {
             if (installed) startActivity(getPackageManager().getLaunchIntentForPackage(PACKAGE));
             else install();
         });
-        LinearLayout.LayoutParams button = spaced(16);
-        button.height = dp(52);
-        column.addView(install, button);
+        LinearLayout.LayoutParams button = spaced(18);
+        button.height = dp(58);
 
-        bar = new Bar(this, PANEL, INK);
+        // what's happening, with how far the install is at its end, over the bar
+        LinearLayout progress = new LinearLayout(this);
+        progress.setGravity(Gravity.BOTTOM);
+        status = text(15, INK, 400);
+        percent = text(30, INK, 300);
+        progress.addView(status, new LinearLayout.LayoutParams(0, -2, 1));
+        progress.addView(percent);
+        bar = new Bar(this, 0x24FFFFFF, INK);
         bar.setVisibility(View.GONE);
-        LinearLayout.LayoutParams track = spaced(16);
-        track.height = dp(10);
-        column.addView(bar, track);
-        status = text(14, INK);
-        column.addView(status, spaced(8));
+        LinearLayout.LayoutParams track = spaced(8);
+        track.height = dp(8);
 
-        TextView details = text(12, MUTED);
-        details.setText("Details");
-        details.setLetterSpacing(0.08f);
-        column.addView(details, spaced(20));
-        log = text(11, MUTED);
+        main = column();
+        LinearLayout.LayoutParams pulled = spaced(-GLOW_ROOM);
+        pulled.leftMargin = -dp(GLOW_ROOM);
+        main.addView(brand, pulled);
+        main.addView(subtitle, spaced(-GLOW_ROOM + 2));
+        main.addView(newer, spaced(6));
+        main.addView(card, spaced(26));
+        main.addView(install, button);
+        main.addView(progress, spaced(18));
+        main.addView(bar, track);
+
+        TextView heading = text(13, MUTED, 500);
+        heading.setText("Details");
+        heading.setLetterSpacing(0.08f);
+        log = text(11, MUTED, 400);
         log.setTypeface(Typeface.MONOSPACE);
         log.setTextIsSelectable(true);
+        GradientDrawable glass = new GradientDrawable();
+        glass.setColor(PANEL);
+        glass.setStroke(1, HAIRLINE);
         scroll = new ScrollView(this);
-        scroll.setBackground(new ColorDrawable(PANEL));
-        scroll.setPadding(dp(12), dp(10), dp(12), dp(10));
+        scroll.setBackground(glass);
+        scroll.setPadding(dp(14), dp(12), dp(14), dp(12));
         scroll.addView(log);
-        LinearLayout.LayoutParams box = spaced(6);
-        box.height = 0;
-        box.weight = 1;
-        column.addView(scroll, box);
+        details = column();
+        details.addView(heading);
+        details.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1));
+        ((LinearLayout.LayoutParams) scroll.getLayoutParams()).topMargin = dp(8);
 
-        TextView notice = text(12, MUTED);
+        TextView notice = text(13, FAINT, 400);
         notice.setText("Phigros++ is an unofficial mod, not affiliated with or endorsed by Pigeon Games.");
-        column.addView(notice, spaced(14));
-        TextView links = text(14, MUTED);
+        TextView links = text(15, MUTED, 400);
         SpannableStringBuilder line = new SpannableStringBuilder();
         for (String[] link : LINKS) {
             if (line.length() > 0) line.append("  ·  ");
@@ -155,18 +190,38 @@ public final class MainActivity extends Activity {
         links.setText(line);
         links.setLinkTextColor(INK);
         links.setMovementMethod(LinkMovementMethod.getInstance());
-        column.addView(links, spaced(8));
 
-        FrameLayout root = new FrameLayout(this);
-        root.setBackground(new ColorDrawable(BG));
-        root.setFitsSystemWindows(true);
-        hint = text(14, MUTED);
+        // the installer beside its details on a wide screen, over them on a narrow one (see fit())
+        body = new LinearLayout(this);
+        body.addView(main);
+        body.addView(details);
+        column = column();
+        column.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        column.addView(notice, spaced(16));
+        column.addView(links, spaced(6));
+
+        FrameLayout content = new FrameLayout(this);
+        content.setFitsSystemWindows(true);
+        hint = text(15, MUTED, 400);
         hint.setGravity(Gravity.CENTER);
         hint.setAlpha(0);
-        root.addView(hint, new FrameLayout.LayoutParams(-1, dp(PULL), Gravity.TOP));
-        root.addView(column);
+        content.addView(hint, new FrameLayout.LayoutParams(-1, dp(PULL), Gravity.TOP));
+        content.addView(column);
+        FrameLayout root = new FrameLayout(this);
+        root.addView(new Fog(this));
+        root.addView(content);
         setContentView(root);
         fit();
+        // everything comes up in turn. the button keeps its own alpha, which says whether it can be tapped
+        View[] entering = {brand, subtitle, card, install, progress, details, notice, links};
+        for (int i = 0; i < entering.length; i++) {
+            View view = entering[i];
+            view.setTranslationY(dp(22));
+            if (view != install) view.setAlpha(0);
+            ViewPropertyAnimator rise = view.animate().translationY(0).setStartDelay(80 + i * 70).setDuration(700)
+                .setInterpolator(EASE);
+            if (view != install) rise.alpha(1);
+        }
         environment();
         check(false);
     }
@@ -270,10 +325,21 @@ public final class MainActivity extends Activity {
         return key;
     }
 
-    // the column stays readable on a tablet: at most 640dp wide, centred
+    // a wide screen (a tablet held sideways) puts the details beside the installer, a narrow one under it. either
+    // way the content stays readable: centred, and no wider than it needs
     private void fit() {
-        int side = Math.max(dp(24), (getResources().getDisplayMetrics().widthPixels - dp(640)) / 2);
-        column.setPadding(side, dp(28), side, dp(20));
+        DisplayMetrics screen = getResources().getDisplayMetrics();
+        boolean wide = screen.widthPixels >= dp(840) && screen.widthPixels > screen.heightPixels;
+        body.setOrientation(wide ? LinearLayout.HORIZONTAL : LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams lead = wide ? new LinearLayout.LayoutParams(0, -2, 1) : new LinearLayout.LayoutParams(-1, -2);
+        lead.gravity = Gravity.CENTER_VERTICAL;
+        main.setLayoutParams(lead);
+        LinearLayout.LayoutParams rest = wide ? new LinearLayout.LayoutParams(0, -1, 1) : new LinearLayout.LayoutParams(-1, 0, 1);
+        rest.leftMargin = wide ? dp(44) : 0;
+        rest.topMargin = wide ? dp(12) : dp(24);
+        details.setLayoutParams(rest);
+        int side = Math.max(dp(24), (screen.widthPixels - dp(wide ? 1080 : 640)) / 2);
+        column.setPadding(side, dp(wide ? 40 : 24), side, dp(20));
     }
 
     @Override
@@ -286,11 +352,29 @@ public final class MainActivity extends Activity {
         return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
-    private TextView text(float size, int color) {
+    private TextView text(float size, int color, int weight) {
         TextView view = new TextView(this);
         view.setTextSize(size);
         view.setTextColor(color);
+        view.setTypeface(saira(weight));
         return view;
+    }
+
+    // Saira, the typeface of phigros.tools, at a weight: android 8 and newer can set it, older ones get the regular
+    private Typeface saira(int weight) {
+        Typeface face = weights.get(weight);
+        if (face == null) {
+            face = Build.VERSION.SDK_INT < 26 ? Typeface.createFromAsset(getAssets(), "Saira.ttf")
+                : new Typeface.Builder(getAssets(), "Saira.ttf").setFontVariationSettings("'wght' " + weight).build();
+            weights.put(weight, face);
+        }
+        return face;
+    }
+
+    private LinearLayout column() {
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        return column;
     }
 
     private LinearLayout.LayoutParams spaced(int top) {
@@ -368,11 +452,11 @@ public final class MainActivity extends Activity {
             state.setText(supported ? "Supported" + (release == null ? "" : " by Phigros++ " + release.version)
                     : older(version, games.get(games.size() - 1)) ? "Update Phigros from the Play Store first"
                     : "Not supported by this Phigros++ yet");
-            state.setTextColor(supported ? OK : WARN);
+            state.setTextColor(supported ? GLOW : WARN);
             String ours = installedVersion();
             // lua updates arrive in game, so only a new game or native version calls for patching again
             installed = version.equals(ours) && target() == installedNative();
-            install.setText(installed ? "Open Phigros++" : ours == null ? "Install Phigros++" : "Update Phigros++");
+            install.setText((installed ? "Open" : ours == null ? "Install" : "Update") + " Phigros++  →");
             enable(!busy && (installed || supported));
         } catch (PackageManager.NameNotFoundException e) {
             game.setText("Phigros isn't installed");
@@ -520,6 +604,7 @@ public final class MainActivity extends Activity {
                     bar.to(1);
                     bar.sweeping(true);
                     status.setText("Installing…");
+                    percent.setText("");
                 });
                 log("committing, free " + mb(getFilesDir().getUsableSpace()));
                 Intent result = new Intent(this, MainActivity.class);
@@ -555,12 +640,13 @@ public final class MainActivity extends Activity {
             bar.setVisibility(View.VISIBLE);
             bar.to(permille / 1000f);
             status.setTextColor(INK);
-            status.setText(step + " · " + permille / 10 + "%");
+            status.setText(step);
+            percent.setText(permille / 10 + "%");
         });
     }
 
     private void done(String text) {
-        finish(text, OK, true);
+        finish(text, GLOW, true);
     }
 
     private void failed(String text) {
@@ -574,6 +660,7 @@ public final class MainActivity extends Activity {
             bar.setVisibility(ok ? View.VISIBLE : View.GONE);
             status.setTextColor(color);
             status.setText(text);
+            percent.setText("");
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             refresh();
         });

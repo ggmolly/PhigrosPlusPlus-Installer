@@ -8,19 +8,29 @@ import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 
-/** a parallelogram filling its bounds, leaning like phigros.tools' buttons and tabs */
+/**
+ * a parallelogram filling its bounds, leaning like phigros.tools' buttons and tabs whatever its height, with a
+ * hairline when it's glass
+ */
 final class Slant extends Drawable {
-    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final float lean;
+    private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+    // the tangent of the one angle everything leans at, 14 degrees
+    static final float LEAN = 0.25f;
 
-    Slant(int color, float lean) {
+    Slant(int color) {
+        this(color, 0);
+    }
+
+    Slant(int color, int outline) {
         paint.setColor(color);
-        this.lean = lean;
+        edge.setColor(outline);
+        edge.setStyle(Paint.Style.STROKE);
     }
 
     @Override
     public void draw(Canvas canvas) {
         Rect b = getBounds();
+        float lean = b.height() * LEAN;
         Path path = new Path();
         path.moveTo(b.left + lean, b.top);
         path.lineTo(b.right, b.top);
@@ -28,6 +38,7 @@ final class Slant extends Drawable {
         path.lineTo(b.left, b.bottom);
         path.close();
         canvas.drawPath(path, paint);
+        if (edge.getColor() != 0) canvas.drawPath(path, edge);
     }
 
     @Override

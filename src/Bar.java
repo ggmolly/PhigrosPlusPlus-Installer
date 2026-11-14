@@ -33,6 +33,8 @@ final class Bar extends View {
     void sweeping(boolean on) {
         if (!on && sweep != null) sweep.cancel();
         if (!on) sweep = null;
+        // drawn once more without the band, or its last frame would stay
+        if (!on) invalidate();
         if (!on || sweep != null) return;
         sweep = ValueAnimator.ofFloat(0, 1).setDuration(1200);
         sweep.setRepeatCount(ValueAnimator.INFINITE);

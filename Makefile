@@ -26,6 +26,7 @@ $(LIB) $(GAMES):
 build/assets/libphigrospp.so: $(LIB)
 build/assets/GAMES: $(GAMES)
 build/assets/release.pub: release.pub
+build/assets/Saira.ttf: fonts/Saira.ttf
 build/assets/%:
 	mkdir -p build/assets && cp $< $@
 
@@ -37,7 +38,8 @@ build/classes.dex: $(wildcard src/*.java)
 build/res.zip: $(shell find res -type f)
 	mkdir -p build && $(TOOLS)/aapt2 compile --dir res -o $@
 
-build/unsigned.apk: AndroidManifest.xml build/res.zip build/classes.dex build/assets/libphigrospp.so build/assets/GAMES build/assets/release.pub
+build/unsigned.apk: AndroidManifest.xml build/res.zip build/classes.dex build/assets/libphigrospp.so build/assets/GAMES build/assets/release.pub \
+		build/assets/Saira.ttf
 	$(TOOLS)/aapt2 link -o $@ --manifest AndroidManifest.xml -I $(JAR) --min-sdk-version 24 --target-sdk-version 35 \
 		-A build/assets build/res.zip
 	chmod 644 build/classes.dex && touch -t 198001010000 build/classes.dex

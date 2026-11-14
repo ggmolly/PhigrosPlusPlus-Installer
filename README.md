@@ -41,4 +41,5 @@ Releases are built by GitHub Actions from a `v*` tag matching `android:versionNa
 
 ## License
 
-GPL-3.0-or-later, see `LICENSE`.
+GPL-3.0-or-later, see `LICENSE`. The app is set in Saira (`fonts/Saira.ttf`, the letters it needs), under the OFL:
+see `LICENSES/Saira-OFL.txt`.
