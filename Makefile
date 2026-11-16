@@ -24,11 +24,13 @@ $(LIB) $(GAMES):
 	@echo "$@ is missing: make lib in ../mod, or make release-patch" >&2; exit 1
 
 build/assets/libphigrospp.so: $(LIB)
-build/assets/GAMES: $(GAMES)
 build/assets/release.pub: release.pub
 build/assets/Saira.ttf: fonts/Saira.ttf
 build/assets/%:
 	mkdir -p build/assets && cp $< $@
+# android's games of ../mod's GAMES ("android:4.0.1.2"), or a release's as they are
+build/assets/GAMES: $(GAMES)
+	mkdir -p build/assets && sed 's/^android://; /:/d' $< > $@
 
 build/classes.dex: $(wildcard src/*.java)
 	rm -rf build/classes && mkdir -p build/classes
