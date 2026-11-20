@@ -19,13 +19,17 @@ import java.util.function.LongConsumer;
 final class Apk {
     private static final String ORIGINAL = "com.PigeonGames.Phigros", LABEL = "Phigros++";
     private static final String LIBMAIN = "lib/arm64-v8a/libmain.so", LIB = "lib/arm64-v8a/libphigrospp.so";
-    private static final int LABEL_ATTRIBUTE = 0x01010001; // android:label
+    private static final String ANDROID = "http://schemas.android.com/apk/res/android";
+    private static final String LAUNCHER = "android.intent.category.LAUNCHER";
+    private static final String SCHEME = "phigrospp"; // of the links that open the app (mod/phigrospp/lua/catalog.lua reads them)
+    // android:label, android:name and android:scheme
+    private static final int LABEL_ATTRIBUTE = 0x01010001, NAME_ATTRIBUTE = 0x01010003, SCHEME_ATTRIBUTE = 0x01010027;
     // apksigner drops the source stamp, dropping it here lets a release be compared without its signature
     private static final String[] DROPPED = {"META-INF/BNDLTOOL.", "META-INF/MANIFEST.MF", "stamp-cert-sha256"};
 
     /**
-     * writes src under another package, named Phigros++ in the launcher with the ++ tab on its icon, its libmain.so
-     * loading lib, signed by signer. the other entries are copied byte for byte. returns whether src had the libmain.so
+     * writes src under another package, named Phigros++ in the launcher with the ++ tab on its icon, opened by
+     * phigrospp:// links, its libmain.so loading lib, signed by signer. the other entries are copied byte for byte. returns whether src had the libmain.so
      */
     static boolean patch(File src, OutputStream dst, String pkg, byte[] lib, Signer signer, LongConsumer read)
             throws IOException, GeneralSecurityException {
@@ -87,22 +91,50 @@ final class Apk {
 
         ByteBuffer rest = ByteBuffer.wrap(Arrays.copyOfRange(data, pool + size, data.length)).order(ByteOrder.LITTLE_ENDIAN);
         int[] ids = {};
+        int idmap = 0, activity = 0, launcher = -1; // where the ids are, and inside which activity the launcher's filter is
         for (int at = 0; at < rest.capacity(); at += rest.getInt(at + 4)) {
             int kind = rest.getShort(at) & 0xFFFF;
+            String element = kind == 0x0102 ? strings.get(rest.getInt(at + 20)) : "";
             if (kind == 0x0180) { // resource ids of the first strings, the attribute names
+                idmap = at;
                 ids = new int[(rest.getInt(at + 4) - 8) / 4];
                 for (int i = 0; i < ids.length; i++) ids[i] = rest.getInt(at + 8 + 4 * i);
-            } else if (kind == 0x0102 && strings.get(rest.getInt(at + 20)).equals("application")) {
+            } else if (element.equals("activity")) {
+                activity = at + rest.getInt(at + 4);
+            } else if (element.equals("application") || element.equals("category")) {
                 int first = rest.getShort(at + 24), step = rest.getShort(at + 26), attributes = rest.getShort(at + 28);
                 for (int i = 0; i < attributes; i++) {
-                    int attribute = at + 16 + first + i * step, name = rest.getInt(attribute + 4);
-                    if (name >= ids.length || ids[name] != LABEL_ATTRIBUTE) continue;
-                    strings.add(LABEL);
-                    int index = strings.size() - 1;
-                    rest.putInt(attribute + 8, index).putShort(attribute + 12, (short) 8).put(attribute + 14, (byte) 0)
-                        .put(attribute + 15, (byte) 0x03).putInt(attribute + 16, index);
+                    int attribute = at + 16 + first + i * step, name = rest.getInt(attribute + 4), value = rest.getInt(attribute + 8);
+                    if (element.equals("category")) {
+                        if (value >= 0 && value < strings.size() && strings.get(value).equals(LAUNCHER)) launcher = activity;
+                    } else if (name < ids.length && ids[name] == LABEL_ATTRIBUTE) {
+                        strings.add(LABEL);
+                        int index = strings.size() - 1;
+                        rest.putInt(attribute + 8, index).putShort(attribute + 12, (short) 8).put(attribute + 14, (byte) 0)
+                            .put(attribute + 15, (byte) 0x03).putInt(attribute + 16, index);
+                    }
                 }
             }
+        }
+        // the launcher's activity also opens phigrospp:// links, from a browser too. only the base apk has activities
+        if (launcher >= 0) {
+            int name = 0;
+            while (ids[name] != NAME_ATTRIBUTE) name++;
+            // an attribute's name is its string's resource id: the map grows to reach the new one, other strings map to 0
+            strings.add("scheme");
+            int scheme = strings.size() - 1, end = idmap + rest.getInt(idmap + 4);
+            ids = Arrays.copyOf(ids, scheme + 1);
+            ids[scheme] = SCHEME_ATTRIBUTE;
+            byte[] link = element(strings, "intent-filter", 0, null,
+                element(strings, "action", name, "android.intent.action.VIEW"),
+                element(strings, "category", name, "android.intent.category.DEFAULT"),
+                element(strings, "category", name, "android.intent.category.BROWSABLE"),
+                element(strings, "data", scheme, SCHEME));
+            ByteBuffer grown = Zip.le(rest.capacity() - (end - idmap) + 8 + 4 * ids.length + link.length);
+            grown.put(rest.array(), 0, idmap).putShort((short) 0x0180).putShort((short) 8).putInt(8 + 4 * ids.length);
+            for (int id : ids) grown.putInt(id);
+            grown.put(rest.array(), end, launcher - end).put(link).put(rest.array(), launcher, rest.capacity() - launcher);
+            rest = grown;
         }
 
         ByteArrayOutputStream body = new ByteArrayOutputStream();
@@ -118,6 +150,27 @@ final class Apk {
         out.putShort((short) 1).putShort((short) 28).putInt(header + body.size()).putInt(strings.size()).putInt(0)
             .putInt(flags).putInt(header).putInt(0);
         return out.put(offsets.array()).put(body.toByteArray()).put(rest.array()).array();
+    }
+
+    private static int string(List<String> strings, String s) {
+        if (!strings.contains(s)) strings.add(s);
+        return strings.indexOf(s);
+    }
+
+    // an element around its children, with a string attribute of the android namespace when it's given a value
+    private static byte[] element(List<String> strings, String tag, int name, String value, byte[]... children) {
+        int attributes = value == null ? 0 : 1, inside = 0;
+        for (byte[] child : children) inside += child.length;
+        int text = value == null ? 0 : string(strings, value), index = string(strings, tag);
+        ByteBuffer out = Zip.le(36 + 20 * attributes + inside + 24);
+        out.putShort((short) 0x0102).putShort((short) 16).putInt(36 + 20 * attributes).putInt(0).putInt(-1).putInt(-1)
+            .putInt(index).putShort((short) 20).putShort((short) 20).putShort((short) attributes).putShort((short) 0)
+            .putShort((short) 0).putShort((short) 0);
+        if (value != null)
+            out.putInt(strings.indexOf(ANDROID)).putInt(name).putInt(text).putShort((short) 8).put((byte) 0).put((byte) 0x03)
+                .putInt(text);
+        for (byte[] child : children) out.put(child);
+        return out.putShort((short) 0x0103).putShort((short) 16).putInt(24).putInt(0).putInt(-1).putInt(-1).putInt(index).array();
     }
 
     private static void encode(ByteArrayOutputStream out, String s, boolean utf8) throws IOException {

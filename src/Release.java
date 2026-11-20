@@ -19,6 +19,8 @@ import java.util.Map;
  * game versions it runs on and the libphigrospp.so to patch them with
  */
 final class Release {
+    // what a release needs of its installer, the number its manifest starts with: 2 is an app opened by phigrospp:// links
+    private static final int FORMAT = 2;
     private static final String DOWNLOAD = "https://github.com/ggmolly/PhigrosPlusPlus/releases/latest/download/";
     static final String INSTALLER = "https://github.com/ggmolly/PhigrosPlusPlus-Installer/releases/latest";
     final String version;
@@ -41,7 +43,7 @@ final class Release {
         byte[] message = Arrays.copyOfRange(signed, 64, signed.length);
         if (!Ed25519.verify(key, message, Arrays.copyOf(signed, 64))) throw new IOException("the release isn't signed by the release key");
         String[] lines = new String(message, StandardCharsets.UTF_8).split("\n");
-        if (!lines[0].equals("phigros++ installer 1")) throw new IOException("the release is for a newer installer");
+        if (!lines[0].matches("phigros\\+\\+ installer [1-" + FORMAT + "]")) throw new IOException("the release is for a newer installer");
         Map<String, String> fields = new HashMap<>();
         for (String line : lines) fields.put(line.substring(0, Math.max(line.indexOf(' '), 0)), line.substring(line.indexOf(' ') + 1));
         return new Release(fields);
