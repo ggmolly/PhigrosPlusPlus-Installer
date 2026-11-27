@@ -510,9 +510,9 @@ public final class MainActivity extends Activity {
         }
     }
 
-    // a lib's built-in bundle starts with "phigros++ <native> <version> <games>": its native version, -1 without one
+    // a lib's built-in bundle starts with "phigros++ <native> <version>": its native version, -1 without one
     private static int nativeOf(byte[] lib) {
-        Matcher line = Pattern.compile("phigros\\+\\+ (\\d+) \\d+\\.\\d+\\.\\d+\\S* [\\d. ]+\n")
+        Matcher line = Pattern.compile("phigros\\+\\+ (\\d+) \\d+\\.\\d+\\.\\d+")
             .matcher(new String(lib, StandardCharsets.ISO_8859_1));
         return line.find() ? Integer.parseInt(line.group(1)) : -1;
     }
