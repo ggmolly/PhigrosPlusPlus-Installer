@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="sh.molly.phigrosplusplus.installer" android:versionCode="5" android:versionName="0.1.4">
+    package="sh.molly.phigrosplusplus.installer" android:versionCode="6" android:versionName="0.1.5">
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.INTERNET" />
     <queries>
